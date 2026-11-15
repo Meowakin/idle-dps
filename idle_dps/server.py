@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import threading
+import webbrowser
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -155,13 +156,23 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, {"error": "not found"}); return 404
 
 
+def _bind(port):
+    try:
+        return ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    except OSError:  # port busy: let the OS pick one
+        return ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+
+
 def main():
     shutdown = telemetry.setup()
     threading.Thread(target=tick_loop, daemon=True).start()
-    port = int(os.getenv("PORT", "8000"))
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    srv = _bind(int(os.getenv("PORT", "8000")))
+    port = srv.server_address[1]
+    url = f"http://127.0.0.1:{port}"
     log.info("idle-dps listening", extra={"port": port})
-    print(f"http://127.0.0.1:{port}")
+    print(f"{url}  (Ctrl+C to quit)")
+    if os.getenv("NO_BROWSER") != "1":
+        threading.Timer(0.5, webbrowser.open, args=[url]).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
