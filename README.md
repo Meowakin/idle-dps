@@ -1,7 +1,8 @@
 # idle-dps
 
 Idle damage sim: no waves, no lose state, score = damage per second.
-Ore from **miners** is split by a live lever between a **mint** (→ gold for upgrades/labs) and turret **ammo**.
+Ore from **miners** is split by a live lever between a **mint** (→ coin for upgrades/labs) and turret **ammo**.
+Buying a unit enqueues a build (FIFO, one at a time): it draws coin and ore (before the ore split) each tick at a capped rate and stalls when starved.
 Turrets turn ammo into DPS. Each source has its own upgrade path; levers (ore split, power, target priority) are tunable live from a web UI.
 
     python -m venv .venv && .venv/bin/pip install -r requirements.txt
@@ -21,8 +22,9 @@ Sends traces, metrics and logs to a collector you run separately: `http://localh
 | Wide events | `sim.tick` root span: levers, unit counts, upgrade levels, buffers, dps, bottleneck as attributes (`sim.*`) |
 | Trace structure | tick → `sim.source.miner` / `sim.convert.mint` / `sim.source.lab` / `sim.turret.fire`; HTTP spans for each player action with before/after state |
 | Slice by lever | `sim.lever.*` on every tick, `app.lever.*` on change spans — "did DPS drop after the power lever moved?" |
+| Builds | one long-lived `sim.build.unit` span per unit (own trace, linked to the enqueuing request): `sim.build.{kind,queue_wait_s,build_s,stall_s,total_s,cost.*}`; `sim.tick` carries `sim.build.{queue_depth,active,rate_fraction,stall_reason}`; bottleneck `build-starved`; histograms `sim.build.duration`/`sim.build.stall`, gauge `sim.build.queue_depth` |
 | SLO | `sim.slo.met` (boolean SLI), `sim.dps.target` per tier; counter `sim.slo.ticks` |
-| Metrics | gauges `sim.damage.dps`, `sim.ore.rate`, `sim.gold.rate`, balances; counters `sim.damage.total`, `sim.ore.overflow`, `sim.upgrade.purchased`, `sim.lever.changed`; histograms for tick and HTTP duration |
+| Metrics | gauges `sim.damage.dps`, `sim.ore.rate`, `sim.coin.rate`, balances; counters `sim.damage.total`, `sim.ore.overflow`, `sim.upgrade.purchased`, `sim.lever.changed`; histograms for tick and HTTP duration |
 | Sampling | head sampler drops `GET /api/state` (1 Hz UI poll); metrics still count it |
 | Logs | correlated with trace ids; emitted on SLO transitions only, not per tick |
 | Resource | `service.name`, `service.version`, per-process `service.instance.id`, `deployment.environment` |

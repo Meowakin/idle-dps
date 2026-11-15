@@ -10,7 +10,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from opentelemetry import metrics, trace
+from opentelemetry import context, metrics, trace
 from opentelemetry.trace import Status, StatusCode
 
 from . import telemetry
@@ -30,6 +30,8 @@ m_wasted = meter.create_counter("sim.ore.overflow", unit="{ore}", description="O
 m_upgrades = meter.create_counter("sim.upgrade.purchased", description="Upgrades/units bought")
 m_levers = meter.create_counter("sim.lever.changed", description="Lever changes")
 m_slo = meter.create_counter("sim.slo.ticks", description="Ticks by SLO outcome")
+h_build = meter.create_histogram("sim.build.duration", unit="s", description="Sim seconds from enqueue to completion")
+h_build_stall = meter.create_histogram("sim.build.stall", unit="s", description="Sim seconds a build spent starved")
 h_tick = meter.create_histogram("sim.tick.duration", unit="s", description="Wall time per tick")
 h_http = meter.create_histogram("http.server.request.duration", unit="s")
 
@@ -43,13 +45,38 @@ def _gauge(name, fn, unit="1"):
 
 _gauge("sim.damage.dps", lambda: sim.dps(), "{damage}/s")
 _gauge("sim.ore.rate", lambda: sim.last.get("ore_rate", 0), "{ore}/s")
-_gauge("sim.gold.rate", lambda: sim.last.get("gold_rate", 0), "{gold}/s")
-_gauge("sim.gold.balance", lambda: sim.gold, "{gold}")
+_gauge("sim.coin.rate", lambda: sim.last.get("coin_rate", 0), "{coin}/s")
+_gauge("sim.coin.balance", lambda: sim.coin, "{coin}")
 _gauge("sim.ammo.balance", lambda: sim.ammo, "{ore}")
+_gauge("sim.build.queue_depth", lambda: len(sim.queue), "{build}")
 _gauge("sim.slo.dps_target", lambda: sim.slo_target(), "{damage}/s")
 
 
 _last_slo = None
+build_spans = {}  # build id -> open span; one long-lived span per build (enqueue -> completion)
+
+
+def start_build_span(b, request_span):
+    """Detached root span (own trace) linked to the enqueuing request, so each build is a waterfall bar."""
+    span = tracer.start_span("sim.build.unit", context=context.Context(),
+                             links=[trace.Link(request_span.get_span_context())],
+                             attributes={"sim.build.id": b["id"], "sim.build.kind": b["kind"],
+                                         "sim.build.work_s": b["work_s"],
+                                         **{f"sim.build.cost.{r}": v for r, v in b["cost"].items()}})
+    build_spans[b["id"]] = span
+
+
+def finish_build_span(b):
+    span = build_spans.pop(b["id"], None)
+    queue_wait, build_s = b["started_t"] - b["enqueued_t"], b["done_t"] - b["started_t"]
+    attrs = {"sim.build.queue_wait_s": queue_wait, "sim.build.build_s": build_s,
+             "sim.build.stall_s": b["stall_s"], "sim.build.total_s": queue_wait + build_s}
+    if span is not None:
+        span.set_attributes(attrs)
+        span.end()
+    m = {"sim.build.kind": b["kind"]}
+    h_build.record(queue_wait + build_s, m)
+    h_build_stall.record(b["stall_s"], m)
 
 
 def tick_once(dt=1.0):
@@ -58,11 +85,18 @@ def tick_once(dt=1.0):
     with tracer.start_as_current_span("sim.tick") as span, lock:
         r = sim.tick(dt, tracer)
         snap = sim.snapshot()
+        bld = r["build"]
+        if bld["started"] and (sp := build_spans.get(bld["started"]["id"])):
+            b = bld["started"]
+            sp.add_event("build.started", {"sim.build.queue_wait_s": b["started_t"] - b["enqueued_t"]})
+        if bld["completed"]: finish_build_span(bld["completed"])
         span.set_attributes({
             "sim.t": snap["t"], "sim.tier": snap["tier"], "sim.phase": snap["phase"],
             "sim.dps": snap["dps"], "sim.dps.target": snap["slo_target"], "sim.slo.met": snap["slo_met"],
-            "sim.bottleneck": r["bottleneck"], "sim.gold": snap["gold"], "sim.ammo": snap["ammo"],
-            "sim.research": snap["research"], "sim.damage.tick": r["turret"]["damage"],
+            "sim.bottleneck": r["bottleneck"], "sim.coin": snap["coin"], "sim.ammo": snap["ammo"],
+            "sim.research": snap["research"], "sim.build.queue_depth": bld["queue_depth"],
+            "sim.build.active": bld["active"], "sim.build.rate_fraction": bld["rate_fraction"],
+            "sim.build.stall_reason": bld["stall_reason"], "sim.damage.tick": r["turret"]["damage"],
             "sim.lever.ore_split": snap["levers"]["ore_split"], "sim.lever.power": snap["levers"]["power"],
             "sim.lever.priority": snap["levers"]["priority"],
             **{f"sim.units.{k}": v for k, v in snap["units"].items()},
@@ -148,9 +182,12 @@ class Handler(BaseHTTPRequestHandler):
                 before = sim.dps()
                 ok, reason, cost = (sim.buy_upgrade if kind == "upgrade" else sim.buy_unit)(b["id"])
                 snap = sim.snapshot()
+                if ok and kind == "unit":
+                    start_build_span(sim.queue[-1], span)
+                    span.set_attributes({"app.build.id": sim.queue[-1]["id"], "app.build.queue_depth": len(sim.queue)})
             span.set_attributes({"app.purchase.kind": kind, "app.purchase.id": b["id"], "app.purchase.ok": ok,
                                  "app.purchase.reason": reason, "app.purchase.cost": cost,
-                                 "sim.gold.after": snap["gold"], "sim.dps.before": before})
+                                 "sim.coin.after": snap["coin"], "sim.dps.before": before})
             m_upgrades.add(1, {"app.purchase.kind": kind, "app.purchase.id": b["id"], "app.purchase.ok": ok})
             self._send(200 if ok else 409, {**snap, "ok": ok, "reason": reason}); return 200 if ok else 409
         self._send(404, {"error": "not found"}); return 404

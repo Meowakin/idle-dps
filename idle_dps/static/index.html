@@ -18,7 +18,7 @@ canvas{width:100%;height:80px;background:#1d2029;border-radius:8px}
   <label>Turret power: <b id=v_power></b></label><input type=range id=power min=.5 max=2 step=.05>
   <label>Target priority</label><select id=priority><option>focus<option>spread</select>
   <p class=dim>Boss phases favor focus, swarm phases favor spread.</p></div>
- <div class=card><h3>Buy units</h3><div id=units></div></div>
+ <div class=card><h3>Build units</h3><div id=units></div><h3 style="margin-top:10px">Build queue</h3><div id=queue class=dim></div></div>
  <div class=card><h3>Bottleneck</h3><div id=bn style="font-size:20px"></div><div class=dim id=flow></div></div>
 </div>
 <div class=row id=paths></div>
@@ -28,13 +28,14 @@ async function api(p,b){const r=await fetch(p,b?{method:'POST',body:JSON.stringi
 function render(s){
  $('dps').textContent=fmt(s.dps);$('phase').textContent='· '+s.phase+' phase · tier '+s.tier;
  $('slo').textContent=(s.slo_met?'✔ ':'✘ ')+'target '+fmt(s.slo_target);$('slo').className=s.slo_met?'ok':'bad';
- $('meta').textContent=`gold ${fmt(s.gold)} · ore→ammo ${fmt(s.ammo)} · research ${fmt(s.research)} · total damage ${fmt(s.total_damage)}`;
+ $('meta').textContent=`coin ${fmt(s.coin)} · ore→ammo ${fmt(s.ammo)} · research ${fmt(s.research)} · total damage ${fmt(s.total_damage)}`;
  for(const k of ['ore_split','power']){ if(document.activeElement!==$(k))$(k).value=s.levers[k]; $('v_'+k).textContent=(+s.levers[k]).toFixed(2)}
  if(document.activeElement!==$('priority'))$('priority').value=s.levers.priority;
- $('units').innerHTML=Object.keys(s.units).map(k=>`<button data-u=${k} ${s.gold<s.unit_costs[k]?'disabled':''}>${k} ×${s.units[k]} — ${fmt(s.unit_costs[k])}g</button>`).join('');
+ $('units').innerHTML=Object.keys(s.units).map(k=>`<button data-u=${k} ${s.queue.length>=s.queue_max?'disabled':''}>${k} ×${s.units[k]} — ${fmt(s.unit_build[k].cost.coin)}c + ${fmt(s.unit_build[k].cost.ore)} ore · ${s.unit_build[k].seconds}s</button>`).join('');
  const g={};for(const k in s.upgrade_costs){const [a]=k.split('.');(g[a]=g[a]||[]).push(k)}
  $('paths').innerHTML=Object.entries(g).map(([a,ks])=>`<div class=card><h3>${a} path</h3>`+ks.map(k=>{const m=s.levels[k]>=s.upgrade_max[k];
-  return `<button data-up=${k} ${m||s.gold<s.upgrade_costs[k]?'disabled':''}>${k.split('.')[1]} L${s.levels[k]} — ${m?'max':fmt(s.upgrade_costs[k])+'g'}</button>`}).join('')+'</div>').join('');
+  return `<button data-up=${k} ${m||s.coin<s.upgrade_costs[k]?'disabled':''}>${k.split('.')[1]} L${s.levels[k]} — ${m?'max':fmt(s.upgrade_costs[k])+'c'}</button>`}).join('')+'</div>').join('');
+ $('queue').innerHTML=s.queue.length?s.queue.map((b,i)=>`<div>${b.kind} ${i?'queued':(s.last.build&&s.last.build.stall_reason?'stalled: '+s.last.build.stall_reason:'building')}<div style="background:#2b3040;height:5px"><div style="background:#5fd38d;height:5px;width:${(b.progress*100).toFixed(0)}%"></div></div></div>`).join(''):'idle';
  $('bn').textContent=s.last.bottleneck||'-';
  $('flow').textContent=s.last.mint?`mint overflow ${fmt(s.last.mint.overflow)} · fire ${(s.last.turret.fire_fraction*100).toFixed(0)}%`:'';
  hist.push(s.dps);if(hist.length>150)hist.shift();spark(s)}
