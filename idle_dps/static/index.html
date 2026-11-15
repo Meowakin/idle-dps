@@ -1,0 +1,49 @@
+<!doctype html><meta charset=utf-8><title>Idle DPS</title>
+<style>
+body{background:#14161c;color:#e6e6e6;font:14px system-ui;margin:0;padding:20px;max-width:980px;margin:auto}
+h1{margin:0 0 4px}.big{font-size:44px;font-weight:700}.ok{color:#5fd38d}.bad{color:#ff7a59}.dim{color:#8a8f9c}
+.row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:14px 0}
+.card{background:#1d2029;border-radius:8px;padding:12px}.card h3{margin:0 0 8px;font-size:13px;color:#8a8f9c;text-transform:uppercase}
+button{background:#2b3040;color:#e6e6e6;border:0;border-radius:5px;padding:5px 8px;margin:2px 0;cursor:pointer;width:100%;text-align:left}
+button:disabled{opacity:.4;cursor:default}label{display:block;margin:8px 0 2px}input[type=range]{width:100%}
+canvas{width:100%;height:80px;background:#1d2029;border-radius:8px}
+</style>
+<h1>Idle DPS <span class=dim id=phase></span></h1>
+<div class=big><span id=dps>0</span> <span class=dim>dps</span> <span id=slo></span></div>
+<div class=dim id=meta></div>
+<canvas id=spark width=940 height=80></canvas>
+<div class=row>
+ <div class=card><h3>Live levers</h3>
+  <label>Ore → mint vs ammo: <b id=v_ore_split></b></label><input type=range id=ore_split min=0 max=1 step=.05>
+  <label>Turret power: <b id=v_power></b></label><input type=range id=power min=.5 max=2 step=.05>
+  <label>Target priority</label><select id=priority><option>focus<option>spread</select>
+  <p class=dim>Boss phases favor focus, swarm phases favor spread.</p></div>
+ <div class=card><h3>Buy units</h3><div id=units></div></div>
+ <div class=card><h3>Bottleneck</h3><div id=bn style="font-size:20px"></div><div class=dim id=flow></div></div>
+</div>
+<div class=row id=paths></div>
+<script>
+const $=id=>document.getElementById(id), hist=[], fmt=n=>n>=1e4?n.toExponential(2):n.toFixed(1);
+async function api(p,b){const r=await fetch(p,b?{method:'POST',body:JSON.stringify(b)}:{});return r.json()}
+function render(s){
+ $('dps').textContent=fmt(s.dps);$('phase').textContent='· '+s.phase+' phase · tier '+s.tier;
+ $('slo').textContent=(s.slo_met?'✔ ':'✘ ')+'target '+fmt(s.slo_target);$('slo').className=s.slo_met?'ok':'bad';
+ $('meta').textContent=`gold ${fmt(s.gold)} · ore→ammo ${fmt(s.ammo)} · research ${fmt(s.research)} · total damage ${fmt(s.total_damage)}`;
+ for(const k of ['ore_split','power']){ if(document.activeElement!==$(k))$(k).value=s.levers[k]; $('v_'+k).textContent=(+s.levers[k]).toFixed(2)}
+ if(document.activeElement!==$('priority'))$('priority').value=s.levers.priority;
+ $('units').innerHTML=Object.keys(s.units).map(k=>`<button data-u=${k} ${s.gold<s.unit_costs[k]?'disabled':''}>${k} ×${s.units[k]} — ${fmt(s.unit_costs[k])}g</button>`).join('');
+ const g={};for(const k in s.upgrade_costs){const [a]=k.split('.');(g[a]=g[a]||[]).push(k)}
+ $('paths').innerHTML=Object.entries(g).map(([a,ks])=>`<div class=card><h3>${a} path</h3>`+ks.map(k=>{const m=s.levels[k]>=s.upgrade_max[k];
+  return `<button data-up=${k} ${m||s.gold<s.upgrade_costs[k]?'disabled':''}>${k.split('.')[1]} L${s.levels[k]} — ${m?'max':fmt(s.upgrade_costs[k])+'g'}</button>`}).join('')+'</div>').join('');
+ $('bn').textContent=s.last.bottleneck||'-';
+ $('flow').textContent=s.last.mint?`mint overflow ${fmt(s.last.mint.overflow)} · fire ${(s.last.turret.fire_fraction*100).toFixed(0)}%`:'';
+ hist.push(s.dps);if(hist.length>150)hist.shift();spark(s)}
+function spark(s){const c=$('spark'),x=c.getContext('2d');x.clearRect(0,0,c.width,80);const mx=Math.max(...hist,s.slo_target)*1.1||1;
+ x.strokeStyle='#ffb84d';x.setLineDash([4,4]);x.beginPath();x.moveTo(0,80-80*s.slo_target/mx);x.lineTo(940,80-80*s.slo_target/mx);x.stroke();x.setLineDash([]);
+ x.strokeStyle='#5fd38d';x.beginPath();hist.forEach((v,i)=>{const px=i*940/150,py=80-80*v/mx;i?x.lineTo(px,py):x.moveTo(px,py)});x.stroke()}
+document.addEventListener('click',async e=>{const u=e.target.dataset.u,up=e.target.dataset.up;
+ if(u)render(await api('/api/unit',{id:u}));if(up)render(await api('/api/upgrade',{id:up}))});
+for(const k of ['ore_split','power'])$(k).oninput=async()=>render(await api('/api/lever',{name:k,value:+$(k).value}));
+$('priority').onchange=async()=>render(await api('/api/lever',{name:'priority',value:$('priority').value}));
+setInterval(async()=>render(await api('/api/state')),1000);api('/api/state').then(render);
+</script>
