@@ -31,7 +31,6 @@ BUILD_COST = {
     "lab": ({"coin": 80, "ore": 15}, 15),
     "turret": ({"coin": 40, "ore": 8}, 10),
 }
-QUEUE_MAX = 5
 LEVERS = {
     "ore_split": (0.0, 1.0),  # fraction of ore routed to the mint; rest is ammo
     "power": (0.5, 2.0),      # turret fire-rate multiplier; costs extra ammo per hit
@@ -195,7 +194,6 @@ class Sim:
         """Enqueue a build. Nothing is paid up front: the build draws resources as it progresses."""
         if kind not in self.units: return False, "unknown", 0
         cost = self.unit_costs(kind)
-        if len(self.queue) >= QUEUE_MAX: return False, "queue_full", cost["coin"]
         self.queue.append({"id": self.next_build_id, "kind": kind, "cost": cost, "work_s": BUILD_COST[kind][1],
                            "enqueued_t": self.t, "started_t": None, "progress": 0.0, "stall_s": 0.0})
         self.next_build_id += 1
@@ -229,7 +227,6 @@ class Sim:
             "unit_costs": {k: self.unit_cost(k) for k in self.units},
             "unit_build": {k: {"cost": self.unit_costs(k), "seconds": BUILD_COST[k][1]} for k in self.units},
             "queue": [{"id": b["id"], "kind": b["kind"], "progress": b["progress"]} for b in self.queue],
-            "queue_max": QUEUE_MAX,
             "upgrade_costs": {k: self.upgrade_cost(k) for k in UPGRADES},
             "upgrade_max": {k: v[2] for k, v in UPGRADES.items()},
             "last": self.last,

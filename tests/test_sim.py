@@ -53,13 +53,12 @@ def test_build_stalls_when_starved_and_reports_it():
     assert s.queue[0]["stall_s"] > 0
 
 
-def test_queue_is_fifo_and_bounded():
+def test_queue_is_fifo_and_unbounded():
     s = Sim(); s.coin = 1e6; s.ore = 1e6
-    for _ in range(5): assert s.buy_unit("miner")[0]
-    assert s.buy_unit("miner")[1] == "queue_full"
+    for _ in range(8): assert s.buy_unit("miner")[0]
     ids = []
-    for _ in range(60):
+    for _ in range(90):
         b = s.tick()["build"]["completed"]
         if b: ids.append(b["id"])
-    assert ids == [1, 2, 3, 4, 5]
-    assert ids and s.units["miner"] == 6
+    assert ids == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert ids and s.units["miner"] == 9

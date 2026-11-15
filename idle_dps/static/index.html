@@ -31,7 +31,7 @@ function render(s){
  $('meta').textContent=`coin ${fmt(s.coin)} · ore→ammo ${fmt(s.ammo)} · research ${fmt(s.research)} · total damage ${fmt(s.total_damage)}`;
  for(const k of ['ore_split','power']){ if(document.activeElement!==$(k))$(k).value=s.levers[k]; $('v_'+k).textContent=(+s.levers[k]).toFixed(2)}
  if(document.activeElement!==$('priority'))$('priority').value=s.levers.priority;
- $('units').innerHTML=Object.keys(s.units).map(k=>`<button data-u=${k} ${s.queue.length>=s.queue_max?'disabled':''}>${k} ×${s.units[k]} — ${fmt(s.unit_build[k].cost.coin)}c + ${fmt(s.unit_build[k].cost.ore)} ore · ${s.unit_build[k].seconds}s</button>`).join('');
+ $('units').innerHTML=Object.keys(s.units).map(k=>`<button data-u=${k} >${k} ×${s.units[k]} — ${fmt(s.unit_build[k].cost.coin)}c + ${fmt(s.unit_build[k].cost.ore)} ore · ${s.unit_build[k].seconds}s</button>`).join('');
  const g={};for(const k in s.upgrade_costs){const [a]=k.split('.');(g[a]=g[a]||[]).push(k)}
  $('paths').innerHTML=Object.entries(g).map(([a,ks])=>`<div class=card><h3>${a} path</h3>`+ks.map(k=>{const m=s.levels[k]>=s.upgrade_max[k];
   return `<button data-up=${k} ${m||s.coin<s.upgrade_costs[k]?'disabled':''}>${k.split('.')[1]} L${s.levels[k]} — ${m?'max':fmt(s.upgrade_costs[k])+'c'}</button>`}).join('')+'</div>').join('');
