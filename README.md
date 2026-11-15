@@ -8,6 +8,10 @@ Turrets turn ammo into DPS. Each source has its own upgrade path; levers (ore sp
     .venv/bin/python -m idle_dps          # UI at http://127.0.0.1:8000 (PORT to change)
     .venv/bin/python -m pytest
 
+## Windows exe (no Python needed)
+Download `idle-dps-windows` from the latest **build** run in GitHub Actions and run `idle-dps.exe`.
+It opens your browser to the UI (set `NO_BROWSER=1` to skip). Build locally on Windows: `pip install pyinstaller && pyinstaller idle-dps.spec`.
+
 ## Telemetry (OpenTelemetry, OTLP/HTTP)
 Sends traces, metrics and logs to a collector you run separately: `http://localhost:4318`
 (override with `OTEL_EXPORTER_OTLP_ENDPOINT`). Honeycomb is a collector exporter concern, not this app's.

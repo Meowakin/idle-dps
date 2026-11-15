@@ -1,0 +1,24 @@
+name: build
+on:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python -m pip install -r requirements.txt pytest pyinstaller
+      - run: python -m pytest -q
+      - run: pyinstaller --noconfirm idle-dps.spec
+      - name: Smoke test the exe
+        shell: pwsh
+        run: |
+          $env:NO_BROWSER = "1"; $env:PORT = "8123"
+          $p = Start-Process dist/idle-dps.exe -PassThru
+          Start-Sleep 6
+          (Invoke-RestMethod http://127.0.0.1:8123/api/state).dps | Out-Host
+          Stop-Process $p
+      - uses: actions/upload-artifact@v4
+        with: { name: idle-dps-windows, path: dist/idle-dps.exe }
