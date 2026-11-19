@@ -1,6 +1,6 @@
 # idle-dps
 
-Idle damage sim: no waves, no lose state, score = damage per second.
+Idle simulation where an economic foundation feeds into generating an abstract damage output. Intended to be an example of OpenTelemetry instrumentation and to generate data to show off the power of Observability.
 Ore from **miners** is split by a live lever between a **mint** (→ coin for upgrades/labs) and turret **ammo**.
 Buying a unit enqueues a build (FIFO, one at a time): it draws coin and ore (before the ore split) each tick at a capped rate and stalls when starved.
 Turrets turn ammo into DPS. Each source has its own upgrade path; levers (ore split, power, target priority) are tunable live from a web UI.
